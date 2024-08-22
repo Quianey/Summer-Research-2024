@@ -1,0 +1,291 @@
+---
+title: "Summer Research"
+author: "Qianyi Wang"
+date: "2024-07-17"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+Import data and package
+```{r}
+# Load necessary libraries
+Sys.setenv(LANG = "EN")
+library(dplyr)
+library(kableExtra)
+library(MASS)
+library(glmnet)
+library(caret)
+library(grf)
+library(DoubleML)
+library(mlr3)
+library(mlr3learners)
+Sys.setenv(LANG = "EN")
+data <- read.csv("C:\\Users\\QEdql\\OneDrive\\桌面\\main\\UCSD\\Research\\summer research\\data.csv")
+data_og <- data
+data <- data[order(data[,3]),]
+c <- 7
+T <- ifelse(data[,3] >= c, 1, 0)
+X_1 <- data[, 4]
+X_2 <- data[, 5]
+X_3 <- data[, 6]
+Z <- data[, 3]
+Y <- data[, 2]
+
+```
+
+1. global Linear Regression
+
+1.1 Build the models 
+```{r}
+
+#linear model
+l_ml <- lm(Y ~ T + Z + X_1 + X_2 + X_3, data = data)
+
+#linear interaction model
+l_int_ml <- lm(Y ~ T + Z + I(Z * T) + X_1 + X_2 + X_3, data = data)
+
+#quadratic model
+qua_ml <- lm(Y ~ T + Z + I(Z^2) + X_1 + X_2 + X_3, data = data)
+
+#quadratic interaction model
+qua_int_ml <- lm(Y ~ T + Z + I(Z^2) + I(Z * T) + I(Z^2 * T) +  X_1 + X_2 + X_3, data = data)
+
+#cubic model
+cub_ml <- lm(Y ~ T + Z + I(Z^2) + I(Z^3) + X_1 + X_2 + X_3, data = data)
+
+#cubic interaction model
+cub_int_model <- lm(Y ~ T + Z + I(Z^2) + I(Z^3) + I(Z * T) + I(Z^2 * T) + I(Z^3 * T) +  X_1 + X_2 + X_3, data = data)
+
+# Extract theta_c from each model
+
+l_theta_c <- coef(l_ml)["T"]
+#l_se <- coef(summary(l_ml))["T", "Std. Error"]
+l_int_theta_c <- coef(l_int_ml)["T"]
+#l_int_se <- coef(summary(l_int_ml))["T", "Std. Error"]
+qua_theta_c <- coef(qua_ml)["T"]
+#qua_se <- coef(summary(qua_ml))["T", "Std. Error"]
+qua_int_theta_c <- coef(qua_int_ml)["T"]
+#qua_int_se <- coef(summary(qua_int_ml))["T", "Std. Error"]
+cub_theta_c <- coef(cub_ml)["T"]
+#cub_se <- coef(summary(cub_ml))["T", "Std. Error"]
+cub_int_theta_c <- coef(cub_int_model)["T"]
+```
+
+1.2 find the best model 
+```{r}
+
+# define the number of bins
+k <- 6 
+
+#1.create k-2 indicator variables
+data_binned <- data %>%
+  mutate(bin = sample(1:k, n(), replace = TRUE))
+data_binned$bin <- factor(data_binned$bin)
+#exclude any two bins to avoid colinearity
+indicator_vars <- model.matrix(~ bin, data = data_binned)[, -c(1, 2)] 
+data_binned <- cbind(data_binned, indicator_vars)
+
+
+#2.run regression 1 using one of the models above
+model1 <- lm(Y ~ T + Z +  X_1 + X_2 + X_3, data = data_binned)
+model2 <- lm(Y ~ T + Z + I(Z * T) +  X_1 + X_2 + X_3, data = data_binned)
+model3 <- lm(Y ~ T + Z + I(Z^2) +  X_1 + X_2 + X_3, data = data_binned)
+model4 <- lm(Y ~ T + Z + I(Z^2) + I(Z * T) + I(Z^2 * T) +  X_1 + X_2 + X_3, data = data_binned)
+model5 <- lm(Y ~ T + Z + I(Z^2) + I(Z^3) +  X_1 + X_2 + X_3, data = data_binned)
+model6 <- lm(Y ~ T + Z + I(Z^2) + I(Z^3) + I(Z * T) + I(Z^2 * T) + I(Z^3 * T) +  X_1 + X_2 + X_3, data = data_binned)
+
+#3.run regression 2 with bin indicator variables
+
+T_bin <- ifelse(data_binned[,3] >= c, 1, 0)
+X_bin_1 <- data_binned[, 4]
+X_bin_2 <- data_binned[, 5]
+X_bin_3 <- data_binned[, 6]
+Z_bin <- data_binned[, 3]
+Y_bin <- data_binned[, 2]
+model1_i <- lm(Y_bin ~ T_bin + Z_bin + X_bin_1 + X_bin_2 + X_bin_3 + bin3 + bin4 + bin5 + bin6, data = data_binned)
+model2_i <- lm(Y_bin ~ T_bin + Z_bin + I(Z_bin * T_bin) + X_bin_1 + X_bin_2 + X_bin_3 + bin3 + bin4 + bin5 + bin6, data = data_binned)
+model3_i <- lm(Y_bin ~ T_bin + Z_bin + I(Z_bin^2) +  X_bin_1 + X_bin_2 + X_bin_3 + bin3 + bin4 + bin5 + bin6, data = data_binned)
+model4_i <- lm(Y_bin ~ T_bin + Z_bin + I(Z_bin^2) + I(Z_bin * T_bin) + I(Z_bin^2 * T_bin) +  X_bin_1 + X_bin_2 + X_bin_3 + bin3 + bin4  + bin5 + bin6, data = data_binned)
+model5_i <- lm(Y_bin ~ T_bin + Z_bin + I(Z_bin^2) + I(Z_bin^3) +  X_bin_1 + X_bin_2 + X_bin_3 + bin3 + bin4 + bin5 + bin6, data =   data_binned)
+model6_i <- lm(Y_bin ~ T_bin + Z_bin + I(Z_bin^2) + I(Z_bin^3) + I(Z_bin * T_bin) + I(Z_bin^2 * T_bin) + I(Z_bin^3 * T_bin) +  X_bin_1 + X_bin_2 + X_bin_3 + bin3 + bin4 + bin5 + bin6, data = data_binned)
+
+#4.obtain R-squared values
+R2_r_1 <- summary(model1)$r.squared
+R2_u_1 <- summary(model1_i)$r.squared
+
+R2_r_2 <- summary(model2)$r.squared
+R2_u_2 <- summary(model2_i)$r.squared
+
+R2_r_3 <- summary(model3)$r.squared
+R2_u_3 <- summary(model3_i)$r.squared
+
+R2_r_4 <- summary(model4)$r.squared
+R2_u_4 <- summary(model4_i)$r.squared
+
+R2_r_5 <- summary(model5)$r.squared
+R2_u_5 <- summary(model5_i)$r.squared
+
+R2_r_6 <- summary(model6)$r.squared
+R2_u_6 <- summary(model6_i)$r.squared
+
+#5.calculate the F statistic
+n <- nrow(data)
+F_1 <- ((R2_u_1 - R2_r_1) / (k - 2)) / ((1 - R2_u_1) / (n - k - 1))
+F_2 <- ((R2_u_2 - R2_r_2) / (k - 2)) / ((1 - R2_u_2) / (n - k - 1))
+F_3 <- ((R2_u_3 - R2_r_3) / (k - 2)) / ((1 - R2_u_3) / (n - k - 1))
+F_4 <- ((R2_u_4 - R2_r_4) / (k - 2)) / ((1 - R2_u_4) / (n - k - 1))
+F_5 <- ((R2_u_5 - R2_r_5) / (k - 2)) / ((1 - R2_u_5) / (n - k - 1))
+F_6 <- ((R2_u_6 - R2_r_6) / (k - 2)) / ((1 - R2_u_6) / (n - k - 1))
+
+#6. Calculate the p-value
+p_1 <- pf(F_1, df1 = k - 2, df2 = n - k - 1, lower.tail = FALSE)
+p_2 <- pf(F_2, df1 = k - 2, df2 = n - k - 1, lower.tail = FALSE)
+p_3 <- pf(F_3, df1 = k - 2, df2 = n - k - 1, lower.tail = FALSE)
+p_4 <- pf(F_4, df1 = k - 2, df2 = n - k - 1, lower.tail = FALSE)
+p_5 <- pf(F_5, df1 = k - 2, df2 = n - k - 1, lower.tail = FALSE)
+p_6 <- pf(F_6, df1 = k - 2, df2 = n - k - 1, lower.tail = FALSE)
+```
+
+1.3 export the result
+```{r}
+results_gl <- data.frame(
+  Model = c("Linear", "Linear Interaction", "Quadratic", "Quadratic Interaction", "Cubic", "Cubic Interaction"),
+  TE = c(l_theta_c, l_int_theta_c, qua_theta_c, qua_int_theta_c, cub_theta_c, cub_int_theta_c), 
+  #SE = c(l_se, l_int_se, qua_se, qua_int_se, cub_se, cub_int_se), 
+  p.value = c(p_1, p_2, p_3, p_4, p_5, p_6)
+)
+
+results_gl
+```
+
+2. Local linear regression
+
+2.1 Build the model 
+```{r}
+triangular_kernel <-function(x){
+  return (pmax(1 - abs(x), 0))
+}
+
+local_linear_regression <- function(h, data){
+  weights <- triangular_kernel(abs(Z - c) / h)
+  model <- lm(Y ~ T + pmax((Z - c), 0) + pmin((Z - c), 0) +  X_1 + X_2 + X_3, data = data, weights = weights)
+  theta_c <- summary(model)$coefficients["T", "Estimate"]
+  se <- summary(model)$coefficients["T", "Std. Error"]
+  return(c(theta_c, se))
+}
+
+```
+
+2.2 Cross-validation
+```{r}
+cross_validation <- function(h_i, data) {
+  data_left <- data[data$X30.Year.Fixed.Rate.Mortgage.Average < c, ]
+  Y_data_left <- data_left[, 2]
+  n <- nrow(data_left)
+  prediction <- rep(NA, n)
+  
+  for (i in 3:n) {
+    
+    #define the band around the cutoff excluding the i-th observation
+    subset_left <- data_left[0, ]
+    for (j in 1:nrow(data_left)) {
+      value <- data_left$X30.Year.Fixed.Rate.Mortgage.Average[j]
+      bound <- data_left$X30.Year.Fixed.Rate.Mortgage.Average[i]
+      if (value >= (bound - h_i) & value < bound) {
+        subset_left <- rbind(subset_left, data_left[j, ])
+      }
+    }
+    
+    if(nrow(subset_left) >= 2){
+
+      #fit local linear regression to the left and right of the cutoff
+      fit_left <- lm(Average.CPI.for.All.Urban.Consumers ~ X30.Year.Fixed.Rate.Mortgage.Average +  Umemplyment.rate + Inflation.rate +Annual.saving.rate, data = subset_left)
+      coefficients <- coef(fit_left)
+      newdata <- data_left[i, ]
+      X <- c(intercept = 1, newdata$X30.Year.Fixed.Rate.Mortgage.Average, newdata$Umemplyment.rate, newdata$Inflation.rate, newdata$Annual.saving.rate)
+      pred_left <- sum(coefficients * X)
+      prediction[i] <- pred_left
+    }
+  }
+  #Find indices of NA values
+  na_indices <- which(is.na(prediction))
+  # Remove NA values from the vector
+  prediction_clean <- prediction[!is.na(prediction)]
+  Y_data_left <- Y_data_left[-na_indices]
+  mse <- mean((Y_data_left - prediction_clean)^2)
+  return(mse)
+}
+
+h_n <- seq(0.5, 1, 0.05)
+result_mse <- sapply(h_n, cross_validation, data = data)
+optimal_h_n <- h_n[which.min(result_mse)]
+
+results_cv <- data.frame(
+  Bandwidth = h_n,
+  N = rep(length(data$Average.CPI.for.All.Urban.Consumers), length(h_n)), 
+  MSE = result_mse
+)
+
+results_cv
+```
+
+2.3 Export data
+```{r}
+result_llr <- sapply(h_n, local_linear_regression, data = data)
+results_llr <- data.frame(
+  Bandwidth = h_n,
+  TE = result_llr[1, ], 
+  #SE = result_llr[2, ], 
+  MSE = result_mse
+)
+
+results_llr
+```
+
+3. Partial Linear model
+
+3.1 Build the model
+```{r}
+set.seed(123)
+#DML Partial Linear Model
+data<- data.frame(Y, T, Z, X_1, X_2, X_3)
+set.seed(999)
+# Lasso learners for the nuisance functions
+ml_l_lasso <- lrn("regr.cv_glmnet", alpha = 1)
+ml_m_lasso <- lrn("classif.cv_glmnet", alpha = 1, predict_type = "prob")
+
+#Initialize a DoubleMLPLR object
+dml_data <- DoubleMLData$new(data, y_col = "Y", d_cols = "T", x_cols = c("Z", "X_1", "X_2", "X_3"))
+dml_plr_lasso <- DoubleMLPLR$new(dml_data, ml_l = ml_l_lasso, ml_m = ml_m_lasso, n_folds = 2)
+
+# plug data in the formula
+dml_plr_lasso$fit()
+theta_c_hat <- dml_plr_lasso$coef
+
+#Comparing with Lasso 
+X <- data[, -which(colnames(data) %in% c("Y"))]
+X <- as.matrix(X)
+reg <- cv.glmnet(x = X, y = data$Y, alpha = 1)
+theta_l_1 <- coef(reg, s = "lambda.min")["T", ]
+theta_l_2 <- coef(reg, s = "lambda.1se")["T", ]
+results_lasso <- data.frame(
+  Model = c("lowest mean cross-validated error", "one standard error", "DML"),
+  TE = c(theta_l_1, theta_l_2, theta_c_hat)
+)
+
+results_lasso
+```
+
+5. Combine the result
+```{r}
+llr <- local_linear_regression(0.55, data)
+results <- data.frame(
+  Model = c("Linear", "Linear Interaction", "Quadratic", "Quadratic Interaction", "Cubic", "Cubic Interaction", "Local Linear Regression", "DML partial Linear"),
+  TE = c(l_theta_c, l_int_theta_c, qua_theta_c, qua_int_theta_c, cub_theta_c, cub_int_theta_c, llr[1], theta_c_hat)
+)
+
+results
+```
+
+
